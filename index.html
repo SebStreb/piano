@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16181d">
+<title>Piano virtuel</title>
+<style>
+  :root {
+    --bg: #16181d;
+    --panel: #20232b;
+    --text: #e9e6df;
+    --muted: #8f939e;
+    --accent: #e0a23c;
+    --white-key: #f6f3ec;
+    --white-key-down: #ecd9b0;
+    --black-key: #1b1c20;
+    --black-key-down: #7a5a22;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 24px;
+    padding: 14px 18px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 20px;
+    font-size: 0.9rem;
+  }
+  .group { display: flex; align-items: center; gap: 8px; }
+  .group > span.label { color: var(--muted); }
+  button {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid #343846;
+    border-radius: 8px;
+    min-width: 40px;
+    height: 40px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: 0.35; cursor: default; border-color: #343846; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #octaveLabel { min-width: 5.5em; text-align: center; font-variant-numeric: tabular-nums; }
+  input[type="range"] { accent-color: var(--accent); width: 110px; }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 10px 14px;
+    min-height: 0;
+  }
+  #piano {
+    position: relative;
+    display: flex;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    height: clamp(170px, 48vh, 340px);
+    padding: 10px 8px 8px;
+    background: var(--panel);
+    border-radius: 12px;
+    border-top: 4px solid var(--accent);
+    touch-action: none;           /* pas de défilement/zoom pendant qu'on joue */
+  }
+  .white {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0 1px;
+    background: var(--white-key);
+    border-radius: 0 0 6px 6px;
+    box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 10px;
+    color: #55524b;
+    cursor: pointer;
+  }
+  .white.down {
+    background: var(--white-key-down);
+    box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.15);
+  }
+  .black {
+    position: absolute;
+    top: 0;
+    right: -1px;
+    width: 62%;
+    height: 62%;
+    transform: translateX(50%);
+    z-index: 2;
+    background: var(--black-key);
+    border-radius: 0 0 5px 5px;
+    box-shadow: inset 0 -5px 0 rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding-bottom: 6px;
+    color: #b9b6ae;
+    cursor: pointer;
+  }
+  .black.down {
+    background: var(--black-key-down);
+    box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.1);
+  }
+  .name { font-size: 0.72rem; pointer-events: none; }
+  .kbd {
+    display: none;
+    font-size: 0.6rem;
+    font-weight: 400;
+    pointer-events: none;
+    opacity: 0.35;
+  }
+  .name .oct { font-size: 0.75em; opacity: 0.5; margin-left: 1px; }
+  .white .kbd { margin-bottom: 4px; }
+  /* Les raccourcis clavier ne sont affichés que sur les appareils avec souris */
+  @media (hover: hover) and (pointer: fine) {
+    .kbd { display: block; }
+    .hint .desktop { display: inline; }
+  }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin: 12px 0 0;
+  }
+  .hint .desktop { display: none; }
+
+  @media (max-height: 420px) {       /* téléphone en paysage */
+    header { padding: 6px 14px; }
+    h1 { font-size: 1rem; }
+    button { height: 34px; }
+    #piano { height: calc(100dvh - 90px); min-height: 130px; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Piano virtuel</h1>
+    <div class="controls">
+      <div class="group">
+        <span class="label">Octave</span>
+        <button id="octaveDown" aria-label="Octave plus grave">−</button>
+        <span id="octaveLabel"></span>
+        <button id="octaveUp" aria-label="Octave plus aiguë">+</button>
+      </div>
+      <label class="group">
+        <span class="label">Volume</span>
+        <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7">
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <div id="piano" role="group" aria-label="Clavier de piano"></div>
+    <p class="hint">
+      Touchez ou cliquez sur les touches pour jouer.
+      <span class="desktop">Vous pouvez aussi utiliser le clavier de l'ordinateur (lettres indiquées sur les touches).</span>
+    </p>
+  </main>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Constantes ---------- */
+  const NOTE_NAMES = ['Do', 'Do♯', 'Ré', 'Ré♯', 'Mi', 'Fa', 'Fa♯', 'Sol', 'Sol♯', 'La', 'La♯', 'Si'];
+  const WHITE_SEMITONES = [0, 2, 4, 5, 7, 9, 11];   // Do Ré Mi Fa Sol La Si
+  const HAS_SHARP = [true, true, false, true, true, true, false];
+  const MIN_WHITE_WIDTH = 42;   // px : largeur minimale d'une touche blanche
+  const MIN_OCTAVE = 1, MAX_OCTAVE = 6;
+
+  // Raccourcis clavier, par position physique (event.code) : fonctionne en AZERTY comme en QWERTY.
+  const WHITE_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon'];
+  const BLACK_CODES = { 0: 'KeyW', 1: 'KeyE', 3: 'KeyT', 4: 'KeyY', 5: 'KeyU', 7: 'KeyO', 8: 'KeyP' };
+  const QWERTY = { KeyA: 'A', KeyS: 'S', KeyD: 'D', KeyF: 'F', KeyG: 'G', KeyH: 'H', KeyJ: 'J', KeyK: 'K', KeyL: 'L', Semicolon: ';',
+                   KeyW: 'W', KeyE: 'E', KeyT: 'T', KeyY: 'Y', KeyU: 'U', KeyO: 'O', KeyP: 'P' };
+  const AZERTY = { ...QWERTY, KeyA: 'Q', KeyW: 'Z', Semicolon: 'M' };
+  let codeLabels = /^fr/i.test(navigator.language || '') ? { ...AZERTY } : { ...QWERTY };
+
+  /* ---------- État ---------- */
+  const piano = document.getElementById('piano');
+  const octaveLabel = document.getElementById('octaveLabel');
+  const octaveDown = document.getElementById('octaveDown');
+  const octaveUp = document.getElementById('octaveUp');
+  const volume = document.getElementById('volume');
+
+  let startOctave = 4;      // octave de la première touche (Do4 = Do central)
+  let octaveCount = 0;      // nombre d'octaves affichées (dépend de la largeur d'écran)
+  let codeToMidi = {};      // raccourci clavier -> note MIDI
+  const keyEls = new Map(); // note MIDI -> élément du DOM
+  const voices = new Map(); // note MIDI -> { gain, oscs, holders:Set }
+  const pointers = new Map(); // pointerId -> note MIDI en cours
+
+  /* ---------- Audio (Web Audio API, aucun fichier son nécessaire) ---------- */
+  let ctx = null, master = null;
+
+  function ensureAudio() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = Number(volume.value);
+      const comp = ctx.createDynamicsCompressor();   // évite la saturation sur les accords
+      master.connect(comp).connect(ctx.destination);
+    }
+    if (ctx.state !== 'running') ctx.resume();
+  }
+  // iOS n'autorise le son qu'après un geste de l'utilisateur
+  ['touchend', 'mouseup', 'keydown'].forEach(type =>
+    window.addEventListener(type, ensureAudio, { passive: true }));
+
+  const midiToFreq = midi => 440 * Math.pow(2, (midi - 69) / 12);
+
+  function startVoice(midi) {
+    ensureAudio();
+    const now = ctx.currentTime;
+    const freq = midiToFreq(midi);
+
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(Math.min(freq * 6, 9000), now);
+    filter.frequency.setTargetAtTime(Math.min(freq * 2.5, 5000), now, 0.4);
+
+    // Fondamentale + deux harmoniques pour un timbre proche d'un piano
+    const partials = [['triangle', 1, 1], ['sine', 2, 0.25], ['sine', 3, 0.08]];
+    const oscs = partials.map(([type, mult, level]) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq * mult;
+      g.gain.value = level;
+      osc.connect(g).connect(filter);
+      osc.start(now);
+      return osc;
+    });
+
+    // Enveloppe : attaque rapide puis décroissance naturelle tant que la touche est tenue
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.45, now + 0.008);
+    gain.gain.setTargetAtTime(0, now + 0.008, 0.9);
+
+    filter.connect(gain).connect(master);
+    return { gain, oscs };
+  }
+
+  function stopVoice(voice) {
+    const now = ctx.currentTime;
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
+    voice.gain.gain.setTargetAtTime(0, now, 0.07);    // relâchement doux, sans « clic »
+    voice.oscs.forEach(osc => osc.stop(now + 0.6));
+  }
+
+  /* ---------- Jouer / relâcher une note ---------- */
+  // "holder" identifie ce qui tient la note (un doigt, la souris ou une touche du clavier)
+  function noteOn(midi, holder) {
+    let voice = voices.get(midi);
+    if (!voice) {
+      voice = { ...startVoice(midi), holders: new Set() };
+      voices.set(midi, voice);
+      const el = keyEls.get(midi);
+      if (el) el.classList.add('down');
+    }
+    voice.holders.add(holder);
+  }
+
+  function noteOff(midi, holder) {
+    const voice = voices.get(midi);
+    if (!voice) return;
+    voice.holders.delete(holder);
+    if (voice.holders.size > 0) return;
+    stopVoice(voice);
+    voices.delete(midi);
+    const el = keyEls.get(midi);
+    if (el) el.classList.remove('down');
+  }
+
+  function allNotesOff() {
+    for (const [midi, voice] of [...voices]) {
+      voice.holders.clear();
+      noteOff(midi, null);
+    }
+    pointers.clear();
+  }
+
+  /* ---------- Construction du clavier ---------- */
+  function build() {
+    allNotesOff();
+    piano.textContent = '';
+    keyEls.clear();
+    codeToMidi = {};
+
+    const firstMidi = 12 * (startOctave + 1);            // Do de l'octave de départ
+    const whiteCount = octaveCount * 7 + 1;              // + le Do final
+
+    for (let i = 0; i < whiteCount; i++) {
+      const degree = i % 7;
+      const midi = firstMidi + 12 * Math.floor(i / 7) + WHITE_SEMITONES[degree];
+      const white = makeKey('white', midi, WHITE_CODES[i]);
+      if (HAS_SHARP[degree] && i < whiteCount - 1) {
+        white.appendChild(makeKey('black', midi + 1, BLACK_CODES[i]));
+      }
+      piano.appendChild(white);
+    }
+
+    octaveLabel.textContent = `Do${startOctave} – Do${startOctave + octaveCount}`;
+    octaveDown.disabled = startOctave <= MIN_OCTAVE;
+    octaveUp.disabled = startOctave + octaveCount >= MAX_OCTAVE + 1;
+  }
+
+  function makeKey(kind, midi, code) {
+    const el = document.createElement('div');
+    el.className = kind;
+    el.dataset.midi = midi;
+    const name = NOTE_NAMES[midi % 12];
+    el.setAttribute('aria-label', `${name} ${Math.floor(midi / 12) - 1}`);
+
+    if (code) {
+      codeToMidi[code] = midi;
+      const kbd = document.createElement('span');
+      kbd.className = 'kbd';
+      kbd.dataset.code = code;
+      kbd.textContent = codeLabels[code] || '';
+      el.appendChild(kbd);
+    }
+    if (kind === 'white') {
+      const label = document.createElement('span');
+      label.className = 'name';
+      label.textContent = name;
+      const oct = document.createElement('sub');
+      oct.className = 'oct';
+      oct.textContent = Math.floor(midi / 12) - 1;
+      label.appendChild(oct);
+      el.appendChild(label);
+    }
+    keyEls.set(midi, el);
+    return el;
+  }
+
+  function refreshKbdLabels() {
+    piano.querySelectorAll('.kbd').forEach(el => {
+      el.textContent = codeLabels[el.dataset.code] || '';
+    });
+  }
+
+  // Adapte le nombre d'octaves à la largeur disponible (1 sur téléphone en portrait, jusqu'à 3 sur PC)
+  function layout() {
+    const whitesThatFit = Math.floor((piano.clientWidth - 16) / MIN_WHITE_WIDTH);
+    const count = Math.max(1, Math.min(3, Math.floor((whitesThatFit - 1) / 7)));
+    if (count === octaveCount) return;
+    octaveCount = count;
+    startOctave = Math.min(startOctave, MAX_OCTAVE + 1 - octaveCount);
+    build();
+  }
+
+  /* ---------- Souris / tactile (Pointer Events, multi-touch) ---------- */
+  function midiAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const key = el && el.closest ? el.closest('[data-midi]') : null;
+    return key && piano.contains(key) ? Number(key.dataset.midi) : null;
+  }
+
+  piano.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    // Libère la capture implicite du tactile pour permettre de glisser d'une touche à l'autre
+    if (e.target.hasPointerCapture && e.target.hasPointerCapture(e.pointerId)) {
+      e.target.releasePointerCapture(e.pointerId);
+    }
+    const midi = midiAt(e.clientX, e.clientY);
+    if (midi === null) return;
+    pointers.set(e.pointerId, midi);
+    noteOn(midi, 'p' + e.pointerId);
+  });
+
+  window.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    const previous = pointers.get(e.pointerId);
+    const midi = midiAt(e.clientX, e.clientY);
+    if (midi === previous) return;
+    if (previous !== null) noteOff(previous, 'p' + e.pointerId);
+    pointers.set(e.pointerId, midi);
+    if (midi !== null) noteOn(midi, 'p' + e.pointerId);
+  });
+
+  function pointerEnd(e) {
+    if (!pointers.has(e.pointerId)) return;
+    const midi = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    if (midi !== null) noteOff(midi, 'p' + e.pointerId);
+  }
+  window.addEventListener('pointerup', pointerEnd);
+  window.addEventListener('pointercancel', pointerEnd);
+  piano.addEventListener('contextmenu', e => e.preventDefault());
+
+  /* ---------- Clavier de l'ordinateur ---------- */
+  const heldCodes = new Map();   // code -> note MIDI (pour relâcher la bonne note après un changement d'octave)
+
+  window.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.target instanceof HTMLInputElement) return;
+    const midi = codeToMidi[e.code];
+    if (midi === undefined) return;
+    e.preventDefault();
+
+    // Corrige l'étiquette affichée si la disposition réelle du clavier diffère de celle supposée
+    if (e.key.length === 1 && codeLabels[e.code] !== e.key.toUpperCase()) {
+      codeLabels[e.code] = e.key.toUpperCase();
+      refreshKbdLabels();
+    }
+    heldCodes.set(e.code, midi);
+    noteOn(midi, 'k' + e.code);
+  });
+
+  window.addEventListener('keyup', e => {
+    if (!heldCodes.has(e.code)) return;
+    noteOff(heldCodes.get(e.code), 'k' + e.code);
+    heldCodes.delete(e.code);
+  });
+
+  /* ---------- Commandes ---------- */
+  function shiftOctave(delta) {
+    const next = startOctave + delta;
+    if (next < MIN_OCTAVE || next + octaveCount > MAX_OCTAVE + 1) return;
+    startOctave = next;
+    heldCodes.clear();
+    build();
+  }
+  octaveDown.addEventListener('click', () => shiftOctave(-1));
+  octaveUp.addEventListener('click', () => shiftOctave(1));
+
+  volume.addEventListener('input', () => {
+    if (master) master.gain.setTargetAtTime(Number(volume.value), ctx.currentTime, 0.02);
+  });
+
+  // Coupe les notes si la page perd le focus (sinon une note peut rester « coincée »)
+  window.addEventListener('blur', () => { heldCodes.clear(); allNotesOff(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { heldCodes.clear(); allNotesOff(); }
+  });
+
+  /* ---------- Démarrage ---------- */
+  // Si le navigateur le permet, récupère les vraies lettres de la disposition du clavier
+  if (navigator.keyboard && navigator.keyboard.getLayoutMap) {
+    navigator.keyboard.getLayoutMap().then(map => {
+      Object.keys(codeLabels).forEach(code => {
+        const value = map.get(code);
+        if (value) codeLabels[code] = value.toUpperCase();
+      });
+      refreshKbdLabels();
+    }).catch(() => {});
+  }
+
+  new ResizeObserver(layout).observe(piano);
+  layout();
+})();
+</script>
+</body>
+</html>
